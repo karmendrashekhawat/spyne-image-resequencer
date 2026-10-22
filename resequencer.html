@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spyne Image Resequencer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#f6f6fb;--card:#fff;--ink:#1c1b29;--mut:#6b6a7d;--line:#e4e3ef;--pri:#5b21f5;--ok:#0a7d3c;--warn:#b45309;--bad:#b91c1c}
+@media(prefers-color-scheme:dark){:root{--bg:#14131c;--card:#1d1c28;--ink:#eceaf7;--mut:#9b99b0;--line:#2e2d3f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 16px 80px}
+h1{font-size:20px;margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.card h2{font-size:14px;margin:0 0 10px}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px}
+input,textarea,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:150px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.two{grid-template-columns:1fr}}
+button{background:var(--pri);color:#fff;border:0;border-radius:6px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+button.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}button:disabled{opacity:.5;cursor:default}
+.hint{font-size:12px;color:var(--mut);margin-top:6px}.msg{margin-top:8px;font-size:13px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.inl{display:inline-block;width:auto}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;color:var(--mut);position:sticky;top:0;background:var(--card);z-index:2}th select,th input{font-size:12px;padding:4px 6px;margin-top:3px;font-weight:400}
+tr.d{cursor:pointer}tr.d:hover{background:var(--bg)}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11.5px;border:1px solid var(--line);white-space:nowrap}
+.det{background:var(--bg)}.strip{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.strip figure{margin:0;width:92px;font-size:10.5px;color:var(--mut)}.strip img{width:92px;height:52px;object-fit:cover;border-radius:4px;display:block;background:var(--line)}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.bar>*{margin:0}
+.prog{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:8px}.prog i{display:block;height:100%;width:0;background:var(--pri);transition:width .3s}
+.sum span{margin-right:16px;font-weight:600}
+details summary{cursor:pointer;color:var(--mut);font-size:12px}
+.th{width:96px;height:54px;object-fit:cover;border-radius:5px;background:var(--line);display:block}
+.seg{display:inline-flex;border:1px solid var(--pri);border-radius:6px;overflow:hidden}.seg button{border-radius:0;background:transparent;color:var(--pri);padding:7px 12px}.seg button.on{background:var(--pri);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.vc{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);cursor:pointer}
+.vc .imgs{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--line)}
+.vc .imgs div{position:relative;aspect-ratio:16/10;background:var(--line)}.vc img{width:100%;height:100%;object-fit:cover;display:block}
+.vc .imgs span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:1px 6px;border-radius:99px}
+.vc .bd{padding:8px 10px;font-size:12px}.vc .bd b{font-size:12.5px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:30px 12px;z-index:10}
+.modal .box{background:var(--card);border-radius:10px;max-width:1000px;width:100%;padding:16px}
+</style></head><body><div class="wrap">
+<h1>Spyne Image Resequencer</h1>
+<p class="sub">Console link + token + sequence in, wrong-sequence VINs found automatically, one click to fix. Runs entirely in your browser (no server); the token stays in this tab's memory only. Undo backups are kept in this browser.</p>
+
+<div class="card"><h2>1 &nbsp; Console link &amp; token</h2>
+ <label>Console inventory link</label>
+ <input id="link" value="https://console.spyne.ai/inventory/v2/listings?enterprise_id=c8f835d67&team_id=a9af6e846">
+ <label>Bearer token (token only; "Bearer " prefix optional)</label>
+ <input id="tok" type="password" autocomplete="off" placeholder="paste token">
+ <label>Your user ID (sent with the change; prefilled)</label>
+ <input id="uid" value="708a04f9">
+ <div class="bar" style="margin-top:10px"><button id="bConnect">Connect &amp; load inventory</button>
+ <label class="inl"><input type="checkbox" id="sold" class="inl"> include sold</label></div>
+ <div id="cMsg" class="msg"></div></div>
+
+<div class="card"><h2>2 &nbsp; Target sequence</h2>
+ <div class="two"><div>
+  <b>Learn the correct order from images - no typing</b>
+  <div class="hint" style="margin:4px 0">Connect first, then give one or more VINs that are already in the correct order. The tool reads every image of those VINs (its angle/category as classified from the image), builds the order, and compares every scanned VIN's images against it.</div>
+  <div class="bar"><label class="inl">Correct VIN folder(s): <input type="file" id="refDir" webkitdirectory directory multiple class="inl"></label>
+   <label class="inl">or .zip(s): <input type="file" id="refZip" accept=".zip" multiple class="inl"></label></div>
+  <label>or reference VIN(s) already correct in the console (one per line)</label>
+  <textarea id="refVins" style="min-height:60px" placeholder="KNDEUCAA3R7580285"></textarea>
+  <div class="bar" style="margin-top:6px"><button id="bRefVins" type="button">Learn from these VINs</button><button class="sec" id="bRefClear" type="button">Clear reference</button></div>
+  <div id="refOut" class="msg"></div>
+  <details style="margin-top:10px"><summary>Advanced: type / upload a label sequence manually (optional)</summary>
+   <textarea id="seq" placeholder="Leave empty when using a reference"></textarea>
+   <div class="bar" style="margin-top:8px"><input type="file" id="seqFile" accept=".csv,.txt" class="inl"></div></details></div>
+ <div class="hint" style="margin-top:0">One label per line, top = first image. Labels: Exterior Front Right, Exterior (straight front), Exterior Front Left, Exterior Left, Exterior Rear Left, Exterior Rear, Exterior Rear Right, Exterior Right, Interior, Focus Shoot, Miscellaneous. Every exterior angle (e.g. 310, 40, 80, 130…) is grouped into the nearest of the 8 exterior positions. Labels you leave out go last in their current order; images with the same label keep their current relative order.
+ <details style="margin-top:10px"><summary>Only check specific VINs (optional)</summary>
+ <textarea id="only" style="min-height:70px" placeholder="Leave empty to scan the whole inventory"></textarea></details></div></div></div>
+
+<div class="card"><h2>3 &nbsp; Find incorrect sequences</h2>
+ <div class="bar"><div style="min-width:280px"><select id="source"><option value="all">Source: All VINs</option></select></div>
+ <div style="min-width:170px"><select id="speed"><option value="2">Speed: gentle (2 at a time)</option><option value="4" selected>Speed: normal (4)</option><option value="8">Speed: fast (8)</option></select></div>
+ <button id="bScan" disabled>Scan inventory</button><button id="bStop" class="sec" style="display:none">Stop</button><button id="bRetry" class="sec" disabled>Re-scan failed</button><span id="pMsg" class="hint"></span></div>
+ <div id="err" class="msg bad" style="display:none;white-space:pre-wrap"></div>
+ <div class="prog" id="progW" style="display:none"><i id="prog"></i></div>
+ <div id="sum" class="sum msg"></div>
+ <div class="bar"><div class="seg"><button id="vVin" class="on">VIN view</button><button id="vHero">Hero angle view</button></div>
+  <input id="q" placeholder="Search VIN / model" style="max-width:220px">
+  <select id="fHero" style="max-width:240px"><option value="">Hero now: any</option></select>
+  <select id="fStatusTop" style="max-width:190px"></select>
+  <button id="bApply" class="sec" disabled>Fix selected</button></div>
+ <div id="out"></div></div>
+
+<div class="card"><h2>Undo</h2><div class="bar"><button class="sec" id="bBk">Load backups</button><button class="sec" id="bUndo" disabled>Restore selected</button></div><div id="bk"></div></div>
+
+<div class="modal" id="modal"><div class="box" id="mbox"></div></div>
+
+<script>
+/* Browser-side engine: same logic as app.py, calls api.spyne.ai directly from the page. */
+const ENGINE=(()=>{
+const API="https://api.spyne.ai";
+const S={token:null,enterpriseId:null,teamId:null,userId:null,vin:{},refs:{},refPattern:null};
+const SCAN={cancel:false,running:false,done:0,total:0,rows:[],error:null,sequence:[]};
+const SECT=["Exterior","Exterior Front Left","Exterior Left","Exterior Rear Left","Exterior Rear","Exterior Rear Right","Exterior Right","Exterior Front Right"];
+const ANG={320:"Exterior Front Right",0:"Exterior",30:"Exterior Front Left",90:"Exterior Left",140:"Exterior Rear Left",180:"Exterior Rear",220:"Exterior Rear Right",260:"Exterior Right"};
+const ALIAS={"front right":"Exterior Front Right","frontright":"Exterior Front Right","fr":"Exterior Front Right","front":"Exterior","exterior front":"Exterior","straight front":"Exterior","front left":"Exterior Front Left","frontleft":"Exterior Front Left","fl":"Exterior Front Left","left":"Exterior Left","driver side":"Exterior Left","rear left":"Exterior Rear Left","rearleft":"Exterior Rear Left","rl":"Exterior Rear Left","rear":"Exterior Rear","back":"Exterior Rear","rear right":"Exterior Rear Right","rearright":"Exterior Rear Right","rr":"Exterior Rear Right","right":"Exterior Right","passenger side":"Exterior Right","misc":"Miscellaneous","other":"Miscellaneous","focus":"Focus Shoot","focus shoot":"Focus Shoot","focusshoot":"Focus Shoot","interiors":"Interior"};
+const CANON=[SECT[7]].concat(SECT.slice(0,7),["Interior","Focus Shoot","Miscellaneous"]);
+const CL={};CANON.forEach(c=>CL[c.toLowerCase()]=c);
+class ApiError extends Error{}class AuthError extends ApiError{}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const uuid=()=>crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2);
+const angleToLabel=a=>SECT[Math.round((((Math.trunc(+a)%360)+360)%360)/45)%8];
+function canon(t){t=String(t).trim().replace(/^["']|["']$/g,"").replace(/\s+/g," ");const l=t.toLowerCase();if(!l)return null;if(CL[l])return CL[l];if(ALIAS[l])return ALIAS[l];if(/^\d{1,3}$/.test(l)&&ANG[+l]!==undefined)return ANG[+l];return t}
+function normSeq(raw){const parts=Array.isArray(raw)?raw:String(raw).split(/[\n,;|>]+|\s+->\s+|\s*→\s*/);const seq=[],seen=new Set();for(const p of parts){const c=canon(p);if(c&&!seen.has(c.toLowerCase())){seen.add(c.toLowerCase());seq.push(c)}}return seq}
+function imgLabel(im){const cat=(im.image_category||"").trim(),c=cat.toLowerCase();if(c==="exterior"){if(im.angle==null)return"Exterior";const n=+im.angle;return isNaN(n)?"Exterior":angleToLabel(n)}if(c.startsWith("interior"))return"Interior";if(c.startsWith("focus"))return"Focus Shoot";return cat||"Unknown"}
+async function api(method,path,body,query){
+  if(!S.token)throw new ApiError("Not connected: paste your token first.");
+  let url=API+path;if(query)url+="?"+new URLSearchParams(query);
+  let last;const tries=method==="GET"?5:1;
+  for(let a=0;a<tries;a++){
+    try{
+      const r=await fetch(url,{method,headers:{"Accept":"application/json, text/plain, */*","Authorization":"Bearer "+S.token,"X-Request-Id":uuid(),...(body!=null?{"Content-Type":"application/json"}:{})},body:body!=null?JSON.stringify(body):undefined});
+      if(r.status===401||r.status===403)throw new AuthError("HTTP "+r.status+" - token expired or not allowed. Paste a fresh token and click Connect again.");
+      if(!r.ok){const t=(await r.text()).slice(0,300);last=new ApiError("HTTP "+r.status+" from "+path+": "+t);if([500,502,503,504,429].includes(r.status)&&a<tries-1){await sleep(2000*(a+1));continue}throw last}
+      const t=await r.text();return t?JSON.parse(t):{};
+    }catch(e){if(e instanceof ApiError)throw e;last=new ApiError("Network error: "+e.message);if(a<tries-1){await sleep(2000*(a+1));continue}throw last}
+  }
+  throw last;
+}
+function findVehicles(o,out){
+  if(Array.isArray(o)){o.forEach(v=>findVehicles(v,out));return}
+  if(o&&typeof o==="object"){
+    const did=o.dealerVinId,vin=o.vin||o.vinName;
+    if(typeof did==="string"&&typeof vin==="string"){
+      out[vin.trim().toUpperCase()]={dealerVinId:did,mediaId:o.mediaId,sources:o.mediaSources||[],imagesStatus:o.imagesStatus,mediaStatus:o.mediaStatus,outCount:o.output_image_count,inCount:o.input_image_count,thumb:o.thumbnail_output_url||o.thumbnail_input_url,name:[o.year,o.make,o.model].filter(Boolean).join(" "),stock:o.stockNumber};return}
+    Object.values(o).forEach(v=>findVehicles(v,out));
+  }
+}
+async function loadInventory(sold){
+  const found={};
+  for(let page=1;page<=50;page++){
+    const res=await api("POST","/inventory/v2/list",{enterpriseId:S.enterpriseId,teamId:S.teamId,page,per_page:100,sort_by:{creationEpoch:"desc"},dealerLang:"en",isSold:!!sold});
+    const before=Object.keys(found).length;findVehicles(res,found);
+    if(Object.keys(found).length===before)break;
+  }
+  Object.assign(S.vin,found);return Object.keys(S.vin).length;
+}
+async function getImages(did){
+  const res=await api("GET","/inventory/v2",null,{dealerVinId:did});
+  const d=(res&&res.data)||{},vm=d.vehicleMedia||{},rec=vm.mediaRecord||{};
+  const mediaId=rec._id||vm.mediaId;let imgs=[];
+  try{imgs=rec.outputData.catalog.processedData.image_data||[]}catch(e){}
+  imgs=imgs.slice().sort((a,b)=>(+a.frame_no||0)-(+b.frame_no||0));
+  return {vin:d.vin,mediaId,imgs};
+}
+function buildTarget(imgs,seq){const rank={};seq.forEach((l,i)=>rank[l]=i);const big=seq.length+1;return imgs.map((im,i)=>[rank[imgLabel(im)]??big,i,im]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(t=>t[2])}
+const isApp=m=>(m.sources||[]).some(x=>String(x).toUpperCase().includes("APP"));
+const th=i=>i.lowres_output||i.input_image;
+const same=(a,b)=>a.length===b.length&&a.every((x,i)=>x===b[i]);
+async function planOne(vin,seq){
+  vin=vin.trim().toUpperCase();const meta=S.vin[vin];const row={vin,status:"ok",warnings:[]};
+  if(!meta){row.status="not_found";row.message="VIN not in loaded inventory";return row}
+  const did=meta.dealerVinId;Object.assign(row,{dealerVinId:did,name:meta.name,sources:meta.sources,listThumb:meta.thumb});
+  if((meta.outCount===0||meta.outCount==null)&&meta.imagesStatus!=null&&meta.imagesStatus!=="DONE"){row.status="no_images";row.message="Images not processed ("+meta.imagesStatus+") - nothing to sequence";return row}
+  let g;try{g=await getImages(did)}catch(e){if(e instanceof AuthError)throw e;row.status="error";row.message=e.message;return row}
+  const {mediaId,imgs}=g;
+  if(!mediaId||!imgs.length){row.status="no_images";row.message="No catalog images to sequence (Raw / Photo NA / unsupported?)";return row}
+  let target=buildTarget(imgs,seq);
+  const rx=S.refs[vin];
+  if(rx&&same(rx.slice().sort(),imgs.map(i=>i.image_id).sort())){const by={};imgs.forEach(i=>by[i.image_id]=i);target=rx.map(x=>by[x])}
+  const cur=imgs.map(i=>i.image_id),nw=target.map(i=>i.image_id),labs=imgs.map(imgLabel),present=new Set(labs);
+  const extra=[...present].filter(l=>!seq.includes(l)).sort();
+  if(extra.length)row.warnings.push("Not in your sequence (placed last): "+extra.join(", "));
+  const mk=i=>({id:i.image_id,label:imgLabel(i),angle:i.angle,thumb:th(i)});
+  Object.assign(row,{mediaId,total:imgs.length,changed:!same(cur,nw),heroNow:labs[0],heroNew:imgLabel(target[0]),current:imgs.map(mk),target:target.map(mk)});
+  if(rx){row.refVin=true;row.matchesRefNow=same(cur,rx);row.targetMatchesRef=same(nw,rx);if(!row.targetMatchesRef)row.warnings.push("Reference mismatch: computed order differs from the uploaded correct folder for this VIN")}
+  if(S.refPattern){const miss=S.refPattern.filter(l=>!present.has(l));if(miss.length)row.warnings.push("Missing vs reference: "+miss.join(", "));if(S.refPattern.includes("Interior")&&!labs.includes("Interior"))row.warnings.push("No interior images (reference has them)")}
+  if(!row.changed)row.status="already_ok";
+  return row;
+}
+const BK="spyne_resequencer_backups";
+const bkLoad=()=>{try{return JSON.parse(localStorage.getItem(BK)||"{}")}catch(e){return {}}};
+const bkSave=o=>{try{localStorage.setItem(BK,JSON.stringify(o))}catch(e){}};
+async function applyOne(vin,seq,uid){
+  const p=await planOne(vin,seq);
+  if(p.status!=="ok")return {vin:p.vin,result:p.status,message:p.message||"nothing to do"};
+  const d=new Date(),pad=n=>String(n).padStart(2,"0"),name=p.vin+"_"+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"-"+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())+".json";
+  const b=bkLoad();b[name]={vin:p.vin,dealerVinId:p.dealerVinId,mediaId:p.mediaId,original_order:p.current.map(c=>c.id),applied_order:p.target.map(c=>c.id)};bkSave(b);
+  await api("POST","/inventory/v2/media/image-sequencing",{mediaId:p.mediaId,imageList:p.target.map((t,n)=>({imageId:t.id,fromSequenceNo:String(n+1)})),enterpriseId:S.enterpriseId,userId:uid||S.userId});
+  await sleep(800);
+  const after=(await getImages(p.dealerVinId)).imgs;const ok=same(after.map(i=>i.image_id),p.target.map(t=>t.id));
+  return {vin:p.vin,result:ok?"applied":"applied_unverified",backup:name,message:ok?"verified":"POST succeeded but re-read order differs (may be eventual consistency) - check in console"};
+}
+async function undo(name){
+  const b=bkLoad()[name];if(!b)throw new ApiError("Backup not found in this browser: "+name);
+  await api("POST","/inventory/v2/media/image-sequencing",{mediaId:b.mediaId,imageList:b.original_order.map((iid,n)=>({imageId:iid,fromSequenceNo:String(n+1)})),enterpriseId:S.enterpriseId,userId:S.userId});
+  return {vin:b.vin,result:"restored",message:"original order re-applied"};
+}
+async function scanOne(v,seq){
+  if(SCAN.cancel)return null;
+  try{return await planOne(v,seq)}
+  catch(e){if(e instanceof AuthError){SCAN.cancel=true;SCAN.error=e.message;return null}return {vin:v,status:"error",warnings:[],message:e.name+": "+e.message}}
+}
+async function scanJob(vins,seq,workers){
+  let i=0;
+  const run=async()=>{while(i<vins.length){const v=vins[i++];const row=await scanOne(v,seq);SCAN.done++;if(row)SCAN.rows.push(row)}};
+  try{await Promise.all(Array.from({length:workers},run))}catch(e){SCAN.error=e.message}
+  SCAN.running=false;
+}
+const REF_RE=/^(.+?)_(\d+)_(.+)_([0-9a-fA-F]{32})\.[A-Za-z0-9]+$/,VIN_RE=/[A-HJ-NPR-Z0-9]{17}/g;
+function parseRefPaths(paths){
+  const refs={};
+  for(const p of paths){
+    const parts=String(p).replace(/\\/g,"/").split("/").filter(Boolean);if(!parts.length)continue;
+    const m=REF_RE.exec(parts[parts.length-1]);if(!m)continue;
+    let vin=null;for(let k=parts.length-2;k>=0&&!vin;k--){const mv=parts[k].toUpperCase().match(VIN_RE);if(mv)vin=mv[0]}
+    if(!vin)continue;(refs[vin]=refs[vin]||[]).push({frame:+m[2],category:m[3],id:m[4].toLowerCase()});
+  }
+  return refs;
+}
+async function verifyRef(refs){
+  const reports=[],derived=[];S.refs={};
+  for(const vin of Object.keys(refs)){
+    const items=refs[vin].slice().sort((a,b)=>(a.frame||0)-(b.frame||0));
+    const rep={vin,files:items.length,matched:0,unmatched:0,catMismatch:0,inInventory:false,labels:[],notes:[]};
+    const meta=S.vin[vin];
+    if(!meta){rep.notes.push("VIN not in connected inventory - cannot look up image angles");reports.push(rep);continue}
+    rep.inInventory=true;const imgs=(await getImages(meta.dealerVinId)).imgs;rep.liveImages=imgs.length;
+    const ordered=[],labs=[];
+    for(const it of items){
+      const hit=imgs.find(im=>JSON.stringify(im).toLowerCase().includes(it.id.toLowerCase()));
+      if(!hit){rep.unmatched++;continue}
+      rep.matched++;const cat=(hit.image_category||"").toLowerCase(),fc=(it.category||"").toLowerCase();
+      if(fc&&cat&&!(cat.startsWith(fc.slice(0,5))||fc.startsWith(cat.slice(0,5))))rep.catMismatch++;
+      ordered.push(hit.image_id);labs.push(imgLabel(hit));
+    }
+    if(rep.unmatched)rep.notes.push(rep.unmatched+" file(s) not found in the live VIN record (image ids differ)");
+    if(rep.matched&&!rep.unmatched&&imgs.length!==items.length)rep.notes.push("Folder has "+items.length+" images, console has "+imgs.length);
+    const seq=[];labs.forEach(l=>{if(!seq.includes(l))seq.push(l)});rep.labels=labs;rep.sequence=seq;
+    if(rep.matched===items.length&&items.length){
+      rep.selfCheck=imgs.length===items.length?same(buildTarget(imgs,seq).map(imgLabel),labs):null;
+      if(imgs.length===items.length)S.refs[vin]=ordered;derived.push(seq);
+    }
+    reports.push(rep);
+  }
+  const out={reports,sequence:null,agree:null};
+  if(derived.length){const keys=derived.map(d=>d.join("|")),cnt={};keys.forEach(k=>cnt[k]=(cnt[k]||0)+1);const best=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];out.sequence=best.split("|");out.agree=cnt[best];out.of=derived.length;S.refPattern=out.sequence}
+  else S.refPattern=null;
+  return out;
+}
+const b64u8=b=>Uint8Array.from(atob(b),c=>c.charCodeAt(0));
+async function route(path,b){
+  b=b||{};
+  if(path==="/api/connect"){
+    let tok=(b.token||"").trim();if(tok.toLowerCase().startsWith("bearer "))tok=tok.slice(7).trim();
+    const q=(b.link||"").split("?")[1]||"",pr=new URLSearchParams(q);
+    const ent=pr.get("enterprise_id")||(b.enterpriseId||"").trim(),team=pr.get("team_id")||(b.teamId||"").trim();
+    if(!(ent&&team&&tok))return {error:"Need a console link containing enterprise_id & team_id, and a token."};
+    Object.assign(S,{token:tok,enterpriseId:ent,teamId:team,userId:(b.userId||"").trim(),vin:{},refs:{},refPattern:null});
+    const n=await loadInventory(!!b.includeSold);const counts={};
+    Object.values(S.vin).forEach(m=>(m.sources&&m.sources.length?m.sources:["(none)"]).forEach(s=>counts[String(s)]=(counts[String(s)]||0)+1));
+    return {ok:true,vehicles:n,enterpriseId:ent,teamId:team,sources:counts,appVins:Object.values(S.vin).filter(isApp).length};
+  }
+  if(path==="/api/scan"){
+    if(SCAN.running)return {error:"A scan is already running."};
+    const seq=normSeq(b.sequence||"");
+    if(!seq.length)return {error:"No sequence yet. In step 2 upload a correct VIN folder/zip or enter a reference VIN, then click Learn."};
+    const only=(String(b.onlyVins||"").toUpperCase().match(VIN_RE))||[];let vins;
+    if(only.length)vins=only;else{vins=Object.keys(S.vin).sort();const src=b.source||"all";
+      if(src==="app")vins=vins.filter(v=>isApp(S.vin[v]));else if(src!=="all")vins=vins.filter(v=>(S.vin[v].sources&&S.vin[v].sources.length?S.vin[v].sources:["(none)"]).map(String).includes(src))}
+    if(!vins.length)return {error:"No matching vehicles. Connect first, or switch Source to 'All'."};
+    const workers=Math.max(1,Math.min(12,+b.workers||4));
+    Object.assign(SCAN,{running:true,cancel:false,done:0,total:vins.length,rows:[],error:null,sequence:seq});
+    scanJob(vins,seq,workers);return {started:vins.length};
+  }
+  if(path==="/api/scan_cancel"){SCAN.cancel=true;return {ok:true}}
+  if(path==="/api/scan_status"){
+    const st={running:SCAN.running,done:SCAN.done,total:SCAN.total,error:SCAN.error,sequence:SCAN.sequence};
+    st.rows=SCAN.rows.slice(+b.since||0);st.n=SCAN.rows.length;const errs={};
+    SCAN.rows.forEach(r=>{if(r.status==="error"){const k=(r.message||"").slice(0,90).replace(/\s+/g," ");errs[k]=(errs[k]||0)+1}});st.errors=errs;return st;
+  }
+  if(path==="/api/apply"){
+    const seq=normSeq(b.sequence||"");const out=[];
+    for(const v of (b.vins||[])){try{out.push(await applyOne(v,seq,b.userId))}catch(e){out.push({vin:v,result:"error",message:e.message})}await sleep(400)}
+    return {results:out};
+  }
+  if(path==="/api/undo"){const out=[];for(const n of (b.backups||[])){try{out.push(await undo(n))}catch(e){out.push({vin:n,result:"error",message:e.message})}}return {results:out}}
+  if(path==="/api/backups"){return {backups:Object.keys(bkLoad()).sort().reverse()}}
+  if(path==="/api/reference"){
+    if(!S.token)return {error:"Connect first (step 1), then upload the correct folder."};
+    const paths=(b.paths||[]).slice();
+    for(const z of (b.zips||[])){
+      if(typeof JSZip==="undefined")return {error:"Zip support did not load (needs internet). Use the folder picker instead."};
+      let zf;try{zf=await JSZip.loadAsync(b64u8(z.b64))}catch(e){return {error:"Could not read zip "+z.name+": "+e.message}}
+      const zname=z.name.replace(/\.[^.]+$/,"");
+      Object.keys(zf.files).filter(n=>!zf.files[n].dir).forEach(n=>paths.push(n.toUpperCase().match(VIN_RE)?n:zname+"/"+n));
+    }
+    const refs=parseRefPaths(paths);
+    for(const v of new Set((String(b.vins||"").toUpperCase().match(VIN_RE))||[])){
+      const meta=S.vin[v];if(!meta)return {error:"Reference VIN "+v+" is not in the loaded inventory (check 'include sold' and reconnect)."};
+      const imgs=(await getImages(meta.dealerVinId)).imgs;refs[v]=imgs.map((i,n)=>({frame:+i.frame_no||n,category:i.image_category||"",id:i.image_id}));
+    }
+    if(!Object.keys(refs).length)return {error:"No VIN folders with files like 1_7_Exterior_<imageid>.jpg were found (folder name must contain the 17-character VIN)."};
+    return await verifyRef(refs);
+  }
+  if(path==="/api/reference_clear"){S.refs={};S.refPattern=null;return {ok:true}}
+  return {error:"unknown route"};
+}
+return {post:async(u,b)=>{try{return await route(u,b)}catch(e){return {error:e.message}}}};
+})();
+
+</script>
+<script>
+const $=id=>document.getElementById(id);
+let rows={}, order=[], view='vin', sel=new Set(), statusF='';
+const post=(u,b)=>ENGINE.post(u,b);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const STAT={ok:['wrong sequence','warn'],already_ok:['correct','ok'],not_found:['not in inventory','bad'],no_images:['no images','bad'],error:['error','bad']};
+const SOPT=[['','All statuses'],['ok','Wrong sequence'],['already_ok','Correct'],['error','Error'],['no_images','No images'],['not_found','Not in inventory']];
+$('fStatusTop').innerHTML=SOPT.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('');
+$('seqFile').onchange=async e=>{$('seq').value=(await e.target.files[0].text()).trim()};
+
+function refShow(r){
+  const o=$('refOut');
+  if(r.error){o.className='msg bad';o.textContent=r.error;return}
+  let t='';
+  (r.reports||[]).forEach(x=>{
+    t+=x.vin+': '+x.files+' files, '+(x.inInventory?x.matched+' matched in console, '+x.unmatched+' not found':'NOT in connected inventory')+(x.catMismatch?', '+x.catMismatch+' category mismatch':'')+(x.selfCheck===true?' - double-check OK (label sort reproduces your folder label order)':x.selfCheck===false?' - WARNING: label sort does not reproduce the folder label order':'')+'\n';
+    (x.notes||[]).forEach(n=>t+='   ! '+n+'\n');
+    if(x.labels&&x.labels.length)t+='   order: '+x.labels.join(' > ')+'\n';
+  });
+  if(r.sequence){
+    $('seq').value=r.sequence.join('\n');
+    t+='\nSequence set from reference ('+r.agree+' of '+r.of+' folders agree):\n'+r.sequence.join(' > ')+'\nEvery scanned VIN is now also checked against this pattern, and reference VINs against their exact folder order.';
+    o.className='msg ok';
+  }else{t+='\nCould not derive a sequence (image ids did not match the console record). Type the sequence manually.';o.className='msg bad'}
+  o.style.whiteSpace='pre-wrap';o.textContent=t;
+}
+$('refDir').onchange=async e=>{
+  const paths=[...e.target.files].map(f=>f.webkitRelativePath||f.name);
+  $('refOut').className='msg';$('refOut').textContent='Verifying '+paths.length+' files against the console…';
+  refShow(await post('/api/reference',{paths}));
+};
+$('refZip').onchange=async e=>{
+  $('refOut').className='msg';$('refOut').textContent='Reading zip and verifying against the console…';
+  const zips=[];
+  for(const f of e.target.files){
+    const buf=new Uint8Array(await f.arrayBuffer());let bin='';
+    for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
+    zips.push({name:f.name,b64:btoa(bin)});
+  }
+  refShow(await post('/api/reference',{zips}));
+};
+$('bRefVins').onclick=async()=>{
+  $('refOut').className='msg';$('refOut').textContent='Reading images of the reference VIN(s)…';
+  refShow(await post('/api/reference',{vins:$('refVins').value}));
+};
+$('bRefClear').onclick=async()=>{await post('/api/reference_clear');$('refOut').textContent='';$('refOut').className='msg';$('refDir').value='';$('seq').value='';$('refZip').value=''};
+$('bConnect').onclick=async()=>{
+  $('cMsg').className='msg';$('cMsg').textContent='Connecting and loading inventory…';
+  const r=await post('/api/connect',{link:$('link').value,token:$('tok').value,userId:$('uid').value,includeSold:$('sold').checked});
+  if(r.error){$('cMsg').className='msg bad';$('cMsg').textContent=r.error;return}
+  $('cMsg').className='msg ok';$('cMsg').textContent='Connected ('+r.enterpriseId+' / '+r.teamId+'). '+r.vehicles+' vehicles loaded.';
+  const nice=k=>({APP_IOS:'Spyne App (iOS)',APP_ANDROID:'Spyne App (Android)',FTP:'FTP',CONSOLE:'Console'}[k]||k);
+  $('source').innerHTML=`<option value="all">Source: All VINs (${r.vehicles})</option><option value="app">Source: Spyne App - iOS + Android (${r.appVins})</option>`+
+    Object.entries(r.sources).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<option value="${esc(k)}">Source: ${esc(nice(k))} - only (${n})</option>`).join('');
+  $('bScan').disabled=false;
+};
+function showErr(t){const e=$('err');e.style.display=t?'':'none';e.textContent=t||''}
+const netErr=e=>showErr('Cannot reach the local tool ('+e+'). Is the black Python window still open? If not, start run_windows.bat / run_mac.command again.');
+$('bStop').onclick=()=>post('/api/scan_cancel').catch(netErr);
+function scan(onlyVins,merge){
+  showErr('');
+  return post('/api/scan',{sequence:$('seq').value,onlyVins:onlyVins||$('only').value,source:$('source').value,workers:+$('speed').value}).then(r=>{
+    if(r.error){showErr(r.error);if(/already running/.test(r.error))$('bStop').style.display='';return}
+    if(!merge){rows={};order=[];sel=new Set()}
+    $('bScan').disabled=true;$('bRetry').disabled=true;$('bStop').style.display='';$('progW').style.display='';$('pMsg').className='hint';
+    let since=0,busy=false;
+    const t=setInterval(async()=>{
+      if(busy)return;busy=true;
+      try{
+        const s=await post('/api/scan_status',{since});
+        s.rows.forEach(x=>{if(!(x.vin in rows))order.push(x.vin);rows[x.vin]=x;if(x.status==='ok')sel.add(x.vin);else sel.delete(x.vin)});
+        since=s.n;
+        $('prog').style.width=(s.total?100*s.done/s.total:0)+'%';$('pMsg').textContent='Scanning '+s.done+' / '+s.total+' …';
+        const ek=Object.entries(s.errors||{});
+        if(s.error)showErr(s.error);else if(ek.length)showErr('Some VINs failed:\n'+ek.map(([k,n])=>n+' × '+k).join('\n')+'\n(use "Re-scan failed", or lower the speed)');
+        try{render()}catch(e){showErr('Display error: '+e.message)}
+        if(!s.running){clearInterval(t);$('bScan').disabled=false;$('bStop').style.display='none';$('pMsg').textContent='Done. Sequence: '+s.sequence.join(' → ')}
+      }catch(e){clearInterval(t);$('bScan').disabled=false;netErr(e.message)}
+      busy=false;
+    },1200);
+  }).catch(e=>netErr(e.message));
+}
+$('bScan').onclick=()=>scan();
+$('bRetry').onclick=()=>{const v=order.filter(x=>rows[x].status==='error');if(v.length)scan(v.join('\n'),true)};
+
+function filtered(){
+  const q=$('q').value.trim().toLowerCase(),h=$('fHero').value;
+  return order.map(v=>rows[v]).filter(r=>(!statusF||r.status===statusF)&&(!h||r.heroNow===h)&&(!q||(r.vin+' '+(r.name||'')).toLowerCase().includes(q)));
+}
+const pill=r=>{const m=STAT[r.status]||[r.status,''];return `<span class="pill ${m[1]}">${m[0]}</span>`};
+const strip=a=>`<div class="strip">`+a.map((x,i)=>`<figure><img loading="lazy" src="${esc(x.thumb||'')}"><b>${i+1}</b> ${esc(x.label)}</figure>`).join('')+`</div>`;
+const heroImg=(a)=>a&&a[0]?a[0].thumb:'';
+function render(){
+  const all=order.map(v=>rows[v]),c={};all.forEach(r=>c[r.status]=(c[r.status]||0)+1);
+  $('sum').innerHTML=`<span class="warn">${c.ok||0} wrong sequence</span><span class="ok">${c.already_ok||0} correct</span><span class="bad">${c.error||0} errors</span><span class="bad">${c.no_images||0} no images</span>`;
+  $('bRetry').disabled=!(c.error);
+  const hs=[...new Set(all.map(r=>r.heroNow).filter(Boolean))].sort(),cur=$('fHero').value;
+  $('fHero').innerHTML='<option value="">Hero now: any</option>'+hs.map(h=>`<option ${h===cur?'selected':''}>${esc(h)}</option>`).join('');
+  $('fStatusTop').value=statusF;
+  const list=filtered();
+  if(view==='vin'){
+    let h=`<table><tr><th><input type="checkbox" id="all" class="inl"></th><th>VIN</th>
+     <th>Status<br><select id="fSt">${SOPT.map(o=>`<option value="${o[0]}" ${o[0]===statusF?'selected':''}>${o[1]}</option>`).join('')}</select></th>
+     <th>Hero now → new</th><th>Images</th><th>Notes</th></tr>`;
+    list.forEach(r=>{
+      h+=`<tr class="d" data-v="${r.vin}"><td><input type="checkbox" class="sel inl" data-v="${r.vin}" ${sel.has(r.vin)?'checked':''} ${r.status==='ok'?'':'disabled'}></td>
+      <td><b>${esc(r.vin)}</b><div class="hint" style="margin:0">${esc(r.name||'')} ${(r.sources||[]).map(s=>`<span class="pill">${esc(s)}</span>`).join(' ')}</div></td>
+      <td>${pill(r)}</td>
+      <td>${r.current?`<div style="display:flex;gap:6px;align-items:center"><div><img class="th" src="${esc(heroImg(r.current))}"><span class="hint">${esc(r.heroNow)}</span></div>→<div><img class="th" src="${esc(heroImg(r.target))}"><span class="hint">${esc(r.heroNew)}</span></div></div>`:(r.listThumb?`<img class="th" src="${esc(r.listThumb)}">`:'')}</td>
+      <td>${r.total??''}</td><td class="hint">${r.refVin?`<b>${r.targetMatchesRef?(r.matchesRefNow?'✔ equals your reference folder':'✔ will match your reference folder'):'✖ differs from your reference folder'}</b> `:''}${esc(r.message||(r.warnings||[]).join(' · '))}</td></tr>`;
+    });
+    $('out').innerHTML=h+'</table>';
+    $('fSt').onchange=e=>{statusF=e.target.value;render()};
+    const all2=$('all');all2.onchange=e=>{list.forEach(r=>{if(r.status==='ok'){e.target.checked?sel.add(r.vin):sel.delete(r.vin)}});render()};
+  }else{
+    $('out').innerHTML=`<div class="grid">`+list.map(r=>`<div class="vc" data-v="${r.vin}"><div class="imgs">
+      <div><img loading="lazy" src="${esc(r.current?heroImg(r.current):r.listThumb||'')}"><span>now: ${esc(r.heroNow||'—')}</span></div>
+      <div>${r.target?`<img loading="lazy" src="${esc(heroImg(r.target))}"><span>new: ${esc(r.heroNew)}</span>`:''}</div></div>
+      <div class="bd"><label class="inl" style="margin:0"><input type="checkbox" class="sel inl" data-v="${r.vin}" ${sel.has(r.vin)?'checked':''} ${r.status==='ok'?'':'disabled'}></label> <b>${esc(r.vin)}</b> ${pill(r)}<div class="hint" style="margin:2px 0 0">${esc(r.name||'')} · ${r.total??''} images</div></div></div>`).join('')+`</div>`;
+  }
+  document.querySelectorAll('.sel').forEach(x=>{x.onclick=e=>e.stopPropagation();x.onchange=e=>{e.target.checked?sel.add(x.dataset.v):sel.delete(x.dataset.v);upd()}});
+  document.querySelectorAll('[data-v]').forEach(el=>{if(el.classList.contains('sel'))return;el.onclick=()=>openDetail(el.dataset.v)});
+  upd();
+}
+function openDetail(v){
+  const r=rows[v];if(!r)return;
+  $('mbox').innerHTML=`<div class="bar"><b>${esc(r.vin)}</b> ${pill(r)} <span class="hint">${esc(r.name||'')}</span><button class="sec" style="margin-left:auto" onclick="$('modal').style.display='none'">Close</button></div>`+
+   (r.current?`<b>Before</b>${strip(r.current)}<b>After</b>${strip(r.target)}`:`<p class="hint">${esc(r.message||'')}</p>`)+(r.warnings&&r.warnings.length?`<p class="hint">${esc(r.warnings.join(' · '))}</p>`:'');
+  $('modal').style.display='flex';
+}
+$('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none'};
+function upd(){const n=[...sel].filter(v=>rows[v]&&rows[v].status==='ok').length;$('bApply').disabled=!n;$('bApply').textContent='Fix selected ('+n+')'}
+$('vVin').onclick=()=>{view='vin';$('vVin').classList.add('on');$('vHero').classList.remove('on');render()};
+$('vHero').onclick=()=>{view='hero';$('vHero').classList.add('on');$('vVin').classList.remove('on');render()};
+$('q').oninput=render;$('fHero').onchange=render;$('fStatusTop').onchange=e=>{statusF=e.target.value;render()};
+$('bApply').onclick=async()=>{
+  const vins=[...sel].filter(v=>rows[v]&&rows[v].status==='ok');
+  if(!confirm('Re-order images on '+vins.length+' live VINs? A backup is saved for each.'))return;
+  $('bApply').disabled=true;$('pMsg').className='hint';$('pMsg').textContent='Applying '+vins.length+' VINs… (keep this window open)';
+  const r=await post('/api/apply',{vins,sequence:$('seq').value,userId:$('uid').value});
+  $('pMsg').textContent=r.error||'Done.';
+  (r.results||[]).forEach(t=>{const x=rows[t.vin];if(!x)return;if(t.result.startsWith('applied')){x.status='already_ok';sel.delete(t.vin);if(x.target){x.current=x.target;x.heroNow=x.heroNew}}x.message=t.result+': '+(t.message||'')});
+  render();
+};
+$('bBk').onclick=async()=>{
+  const r=await ENGINE.post('/api/backups');
+  $('bk').innerHTML=(r.backups.length?r.backups.map(b=>`<label style="display:block"><input type="checkbox" class="bkc inl" value="${esc(b)}"> ${esc(b)}</label>`).join(''):'<span class="hint">No backups yet.</span>');
+  document.querySelectorAll('.bkc').forEach(c=>c.onchange=()=>$('bUndo').disabled=!document.querySelector('.bkc:checked'));
+};
+$('bUndo').onclick=async()=>{
+  const b=[...document.querySelectorAll('.bkc:checked')].map(c=>c.value);
+  if(!confirm('Restore original order for '+b.length+' backup(s)?'))return;
+  const r=await post('/api/undo',{backups:b});alert(r.error||JSON.stringify(r.results,null,1));
+};
+</script></div></body></html>
