@@ -43,8 +43,8 @@ details summary{cursor:pointer;color:var(--mut);font-size:12px}
 <p class="sub">Console link + token + sequence in, wrong-sequence VINs found automatically, one click to fix. Runs on your computer; the token stays in memory only.</p>
 
 <div class="card"><h2>1 &nbsp; Console link &amp; token</h2>
- <label>Console inventory link</label>
- <input id="link" value="https://console.spyne.ai/inventory/v2/listings?enterprise_id=c8f835d67&team_id=a9af6e846">
+  <label>Console inventory link (any enterprise / team - paste the link of the team you want to fix)</label>
+ <input id="link" placeholder="https://console.spyne.ai/inventory/v2/listings?enterprise_id=...&team_id=...">
  <label>Bearer token (token only; "Bearer " prefix optional)</label>
  <input id="tok" type="password" autocomplete="off" placeholder="paste token">
  <label>Your user ID (sent with the change; prefilled)</label>
@@ -64,6 +64,7 @@ details summary{cursor:pointer;color:var(--mut);font-size:12px}
   <div class="bar" style="margin-top:6px"><button id="bRefVins" type="button">Learn from these VINs</button><button class="sec" id="bRefClear" type="button">Clear reference</button></div>
   <div id="refOut" class="msg"></div>
   <details style="margin-top:10px"><summary>Advanced: type / upload a label sequence manually (optional)</summary>
+   <div class="bar"><label class="inl">Quick sequence: <select id="qseq"><option value="">- choose -</option><option value="30">30° hero, anti-clockwise (Front Left first)</option><option value="fr">Front Right first, clockwise</option></select></label></div>
    <textarea id="seq" placeholder="Leave empty when using a reference"></textarea>
    <div class="bar" style="margin-top:8px"><input type="file" id="seqFile" accept=".csv,.txt" class="inl"></div></details></div>
  <div class="hint" style="margin-top:0">One label per line, top = first image. Labels: Exterior Front Right, Exterior (straight front), Exterior Front Left, Exterior Left, Exterior Rear Left, Exterior Rear, Exterior Rear Right, Exterior Right, Interior, Focus Shoot, Miscellaneous. Every exterior angle (e.g. 310, 40, 80, 130…) is grouped into the nearest of the 8 exterior positions. Labels you leave out go last in their current order; images with the same label keep their current relative order.
@@ -134,6 +135,10 @@ $('bRefVins').onclick=async()=>{
   refShow(await post('/api/reference',{vins:$('refVins').value}));
 };
 $('bRefClear').onclick=async()=>{await post('/api/reference_clear');$('refOut').textContent='';$('refOut').className='msg';$('refDir').value='';$('seq').value='';$('refZip').value=''};
+const SEQ30=["Exterior Front Left","Exterior","Exterior Front Right","Exterior Right","Exterior Rear Right","Exterior Rear","Exterior Rear Left","Exterior Left","Interior","Focus Shoot"];
+const SEQFR=["Exterior Front Right","Exterior","Exterior Front Left","Exterior Left","Exterior Rear Left","Exterior Rear","Exterior Rear Right","Exterior Right","Interior","Focus Shoot"];
+function useSeq30(){$('seq').value=SEQ30.join("\n");document.querySelectorAll('details').forEach(d=>{if(d.querySelector('#seq'))d.open=true})}
+$('qseq').onchange=e=>{const v=e.target.value;if(v==='30')useSeq30();else if(v==='fr'){$('seq').value=SEQFR.join('\n')}};
 $('bConnect').onclick=async()=>{
   $('cMsg').className='msg';$('cMsg').textContent='Connecting and loading inventory…';
   const r=await post('/api/connect',{link:$('link').value,token:$('tok').value,userId:$('uid').value,includeSold:$('sold').checked});
