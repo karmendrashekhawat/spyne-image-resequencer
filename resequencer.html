@@ -69,10 +69,12 @@ details summary{cursor:pointer;color:var(--mut);font-size:12px}
    <textarea id="seq" placeholder="Leave empty when using a reference"></textarea>
    <div class="bar" style="margin-top:8px"><input type="file" id="seqFile" accept=".csv,.txt" class="inl"></div></details></div>
  <div class="hint" style="margin-top:0">One label per line, top = first image. Labels: Exterior Front Right, Exterior (straight front), Exterior Front Left, Exterior Left, Exterior Rear Left, Exterior Rear, Exterior Rear Right, Exterior Right, Interior, Focus Shoot, Miscellaneous. Every exterior angle (e.g. 310, 40, 80, 130…) is grouped into the nearest of the 8 exterior positions. Labels you leave out go last in their current order; images with the same label keep their current relative order.
- <details style="margin-top:10px"><summary>Only check specific VINs (optional)</summary>
- <textarea id="only" style="min-height:70px" placeholder="Leave empty to scan the whole inventory"></textarea></details></div></div></div>
+</div></div></div>
 
 <div class="card"><h2>3 &nbsp; Find incorrect sequences</h2>
+ <label><b>Resequence only these VINs</b> (paste VINs from the ticket, any separator - leave empty to scan the whole Source below)</label>
+ <textarea id="only" style="min-height:80px" placeholder="1V2KN2CA4TC591283&#10;JTDADABU7R3015945"></textarea>
+ <div id="onlyN" class="hint"></div>
  <div class="bar"><div style="min-width:280px"><select id="source"><option value="all">Source: All VINs</option></select></div>
  <div style="min-width:170px"><select id="speed"><option value="2">Speed: gentle (2 at a time)</option><option value="4" selected>Speed: normal (4)</option><option value="8">Speed: fast (8)</option></select></div>
  <button id="bScan" disabled>Scan inventory</button><button id="bStop" class="sec" style="display:none">Stop</button><button id="bRetry" class="sec" disabled>Re-scan failed</button><span id="pMsg" class="hint"></span></div>
@@ -83,7 +85,7 @@ details summary{cursor:pointer;color:var(--mut);font-size:12px}
   <input id="q" placeholder="Search VIN / model" style="max-width:220px">
   <select id="fHero" style="max-width:240px"><option value="">Hero now: any</option></select>
   <select id="fStatusTop" style="max-width:190px"></select>
-  <button id="bApply" class="sec" disabled>Fix selected</button></div>
+  <button id="bSelAll" class="sec" type="button">Select all</button><button id="bSelNone" class="sec" type="button">Unselect all</button><button id="bApply" class="sec" disabled>Fix selected</button></div>
  <div id="out"></div></div>
 
 <div class="card"><h2>Undo</h2><div class="bar"><button class="sec" id="bBk">Load backups</button><button class="sec" id="bUndo" disabled>Restore selected</button></div><div id="bk"></div></div>
@@ -152,12 +154,19 @@ async function getImages(did){
   imgs=imgs.slice().sort((a,b)=>(+a.frame_no||0)-(+b.frame_no||0));
   return {vin:d.vin,mediaId,imgs};
 }
-function buildTarget(imgs,seq){const rank={};seq.forEach((l,i)=>rank[l]=i);const big=seq.length+1;return imgs.map((im,i)=>[rank[imgLabel(im)]??big,i,im]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(t=>t[2])}
+const SA={"Exterior":0,"Exterior Front Left":45,"Exterior Left":90,"Exterior Rear Left":135,"Exterior Rear":180,"Exterior Rear Right":225,"Exterior Right":270,"Exterior Front Right":315};
+function expandSeq(seq){
+  const ext=seq.filter(l=>l in SA);if(ext.length<2||ext.length===8)return seq.slice();
+  const a0=SA[ext[0]],d=(((SA[ext[1]]-a0)%360)+360)%360,sign=d<=180?1:-1;
+  const steps=l=>((((SA[l]-a0)*sign)%360)+360)%360;const all=Object.keys(SA).sort((a,b)=>steps(a)-steps(b));
+  const out=[];let done=false;for(const l of seq){if(l in SA){if(!done){out.push(...all);done=true}}else out.push(l)}return out;
+}
+function buildTarget(imgs,seq){seq=expandSeq(seq);const rank={};seq.forEach((l,i)=>rank[l]=i);const big=seq.length+1;return imgs.map((im,i)=>[rank[imgLabel(im)]??big,i,im]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(t=>t[2])}
 const isApp=m=>(m.sources||[]).some(x=>String(x).toUpperCase().includes("APP"));
 const th=i=>i.lowres_output||i.input_image;
 const same=(a,b)=>a.length===b.length&&a.every((x,i)=>x===b[i]);
 async function planOne(vin,seq){
-  vin=vin.trim().toUpperCase();const meta=S.vin[vin];const row={vin,status:"ok",warnings:[]};
+  vin=vin.trim().toUpperCase();if(!S.vin[vin]){try{await lookupVin(vin)}catch(e){if(e instanceof AuthError)throw e}}const meta=S.vin[vin];const row={vin,status:"ok",warnings:[]};
   if(!meta){row.status="not_found";row.message="VIN not in loaded inventory";return row}
   const did=meta.dealerVinId;Object.assign(row,{dealerVinId:did,name:meta.name,sources:meta.sources,listThumb:meta.thumb});
   if((meta.outCount===0||meta.outCount==null)&&meta.imagesStatus!=null&&meta.imagesStatus!=="DONE"){row.status="no_images";row.message="Images not processed ("+meta.imagesStatus+") - nothing to sequence";return row}
@@ -168,7 +177,7 @@ async function planOne(vin,seq){
   const rx=S.refs[vin];
   if(rx&&same(rx.slice().sort(),imgs.map(i=>i.image_id).sort())){const by={};imgs.forEach(i=>by[i.image_id]=i);target=rx.map(x=>by[x])}
   const cur=imgs.map(i=>i.image_id),nw=target.map(i=>i.image_id),labs=imgs.map(imgLabel),present=new Set(labs);
-  const extra=[...present].filter(l=>!seq.includes(l)).sort();
+  const xs=expandSeq(seq);const extra=[...present].filter(l=>!xs.includes(l)).sort();
   if(extra.length)row.warnings.push("Not in your sequence (placed last): "+extra.join(", "));
   const mk=i=>({id:i.image_id,label:imgLabel(i),angle:i.angle,thumb:th(i)});
   Object.assign(row,{mediaId,total:imgs.length,changed:!same(cur,nw),heroNow:labs[0],heroNew:imgLabel(target[0]),current:imgs.map(mk),target:target.map(mk)});
@@ -414,7 +423,7 @@ function render(){
   $('fStatusTop').value=statusF;
   const list=filtered();
   if(view==='vin'){
-    let h=`<table><tr><th><input type="checkbox" id="all" class="inl"></th><th>VIN</th>
+    let h=`<table><tr><th><input type="checkbox" id="all" class="inl" ${list.some(r=>r.status==='ok')&&list.filter(r=>r.status==='ok').every(r=>sel.has(r.vin))?'checked':''}></th><th>VIN</th>
      <th>Status<br><select id="fSt">${SOPT.map(o=>`<option value="${o[0]}" ${o[0]===statusF?'selected':''}>${o[1]}</option>`).join('')}</select></th>
      <th>Hero now → new</th><th>Images</th><th>Notes</th></tr>`;
     list.forEach(r=>{
@@ -444,6 +453,11 @@ function openDetail(v){
   $('modal').style.display='flex';
 }
 $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none'};
+function visOk(){return filtered().filter(r=>r.status==='ok').map(r=>r.vin)}
+$('bSelAll').onclick=()=>{visOk().forEach(v=>sel.add(v));render()};
+$('bSelNone').onclick=()=>{sel.clear();render()};
+function onlyList(){return ($('only').value.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g)||[])}
+$('only').oninput=()=>{const n=new Set(onlyList()).size;$('onlyN').textContent=n?(n+' VIN(s) listed - only these will be scanned (Source filter is ignored).'):'';$('bScan').textContent=n?('Scan these '+n+' VINs'):'Scan inventory'};
 function upd(){const n=[...sel].filter(v=>rows[v]&&rows[v].status==='ok').length;$('bApply').disabled=!n;$('bApply').textContent='Fix selected ('+n+')'}
 $('vVin').onclick=()=>{view='vin';$('vVin').classList.add('on');$('vHero').classList.remove('on');render()};
 $('vHero').onclick=()=>{view='hero';$('vHero').classList.add('on');$('vVin').classList.remove('on');render()};

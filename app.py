@@ -203,6 +203,18 @@ def load_inventory(include_sold=False):
     return len(STATE["vin_map"])
 
 
+def lookup_vin(vin):
+    """Find a VIN that is not in the loaded list by asking the list API to search for it."""
+    body = {"enterpriseId": STATE["enterpriseId"], "teamId": STATE["teamId"], "page": 1, "per_page": 20,
+            "search": vin, "dealerLang": "en"}
+    out = {}
+    find_vehicles(api("POST", "/inventory/v2/list", body), out)
+    if vin in out:
+        STATE["vin_map"][vin] = out[vin]
+        return True
+    return False
+
+
 def get_vehicle_images(dealer_vin_id):
     res = api("GET", "/inventory/v2", query={"dealerVinId": dealer_vin_id})
     d = (res or {}).get("data") or {}
@@ -218,8 +230,35 @@ def get_vehicle_images(dealer_vin_id):
 
 
 # ---------------------------------------------------------------- planning
+SECTOR_ANGLE = {"Exterior": 0, "Exterior Front Left": 45, "Exterior Left": 90, "Exterior Rear Left": 135,
+                "Exterior Rear": 180, "Exterior Rear Right": 225, "Exterior Right": 270, "Exterior Front Right": 315}
+
+
+def expand_seq(seq):
+    """If the sequence lists only some exterior angles (e.g. learned from a 6-angle VIN), slot the missing
+    exterior angles in along the same rotation direction instead of dumping them at the end."""
+    ext = [l for l in seq if l in SECTOR_ANGLE]
+    if len(ext) < 2 or len(ext) == 8:
+        return list(seq)
+    a0, a1 = SECTOR_ANGLE[ext[0]], SECTOR_ANGLE[ext[1]]
+    d = (a1 - a0) % 360
+    sign = 1 if d <= 180 else -1
+    steps = lambda l: ((SECTOR_ANGLE[l] - a0) * sign) % 360
+    ext_all = sorted(SECTOR_ANGLE, key=steps)
+    out, done = [], False
+    for l in seq:
+        if l in SECTOR_ANGLE:
+            if not done:
+                out.extend(ext_all)
+                done = True
+        else:
+            out.append(l)
+    return out
+
+
 def build_target(imgs, seq):
     """Stable re-order: images grouped by the label order in `seq`; unlisted labels go last."""
+    seq = expand_seq(seq)
     rank = {lab: i for i, lab in enumerate(seq)}
     big = len(seq) + 1
     keyed = [(rank.get(image_label(im), big), idx, im) for idx, im in enumerate(imgs)]
@@ -235,6 +274,14 @@ def plan_one(vin, seq, use_meta_shortcuts=True):
     vin = vin.strip().upper()
     meta = STATE["vin_map"].get(vin)
     row = {"vin": vin, "status": "ok", "warnings": []}
+    if not meta:
+        try:
+            if lookup_vin(vin):
+                meta = STATE["vin_map"].get(vin)
+        except AuthError:
+            raise
+        except ApiError:
+            pass
     if not meta:
         row.update(status="not_found", message="VIN not in loaded inventory")
         return row
@@ -262,7 +309,7 @@ def plan_one(vin, seq, use_meta_shortcuts=True):
     new_ids = [i["image_id"] for i in target]
     labs = [image_label(i) for i in imgs]
     present = set(labs)
-    extra = sorted(present - set(seq))
+    extra = sorted(present - set(expand_seq(seq)))
     if extra:
         row["warnings"].append("Not in your sequence (placed last): " + ", ".join(extra))
     row.update(
@@ -572,8 +619,10 @@ class H(BaseHTTPRequestHandler):
             refs = parse_ref_paths(paths)
             for v in set(VIN_RE.findall((b.get("vins") or "").upper())):
                 meta = STATE["vin_map"].get(v)
+                if not meta and lookup_vin(v):
+                    meta = STATE["vin_map"].get(v)
                 if not meta:
-                    return {"error": "Reference VIN %s is not in the loaded inventory (check 'include sold' and reconnect)." % v}
+                    return {"error": "Reference VIN %s is not in the team you connected (%s). Connect with the console link of the team that owns this VIN, or upload its image folder/zip instead." % (v, STATE["teamId"])}
                 _, _, imgs = get_vehicle_images(meta["dealerVinId"])
                 refs[v] = [{"frame": int(i.get("frame_no") or n), "category": i.get("image_category") or "", "id": i["image_id"]} for n, i in enumerate(imgs)]
             if not refs:

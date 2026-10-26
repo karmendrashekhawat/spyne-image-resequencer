@@ -68,10 +68,12 @@ details summary{cursor:pointer;color:var(--mut);font-size:12px}
    <textarea id="seq" placeholder="Leave empty when using a reference"></textarea>
    <div class="bar" style="margin-top:8px"><input type="file" id="seqFile" accept=".csv,.txt" class="inl"></div></details></div>
  <div class="hint" style="margin-top:0">One label per line, top = first image. Labels: Exterior Front Right, Exterior (straight front), Exterior Front Left, Exterior Left, Exterior Rear Left, Exterior Rear, Exterior Rear Right, Exterior Right, Interior, Focus Shoot, Miscellaneous. Every exterior angle (e.g. 310, 40, 80, 130…) is grouped into the nearest of the 8 exterior positions. Labels you leave out go last in their current order; images with the same label keep their current relative order.
- <details style="margin-top:10px"><summary>Only check specific VINs (optional)</summary>
- <textarea id="only" style="min-height:70px" placeholder="Leave empty to scan the whole inventory"></textarea></details></div></div></div>
+</div></div></div>
 
 <div class="card"><h2>3 &nbsp; Find incorrect sequences</h2>
+ <label><b>Resequence only these VINs</b> (paste VINs from the ticket, any separator - leave empty to scan the whole Source below)</label>
+ <textarea id="only" style="min-height:80px" placeholder="1V2KN2CA4TC591283&#10;JTDADABU7R3015945"></textarea>
+ <div id="onlyN" class="hint"></div>
  <div class="bar"><div style="min-width:280px"><select id="source"><option value="all">Source: All VINs</option></select></div>
  <div style="min-width:170px"><select id="speed"><option value="2">Speed: gentle (2 at a time)</option><option value="4" selected>Speed: normal (4)</option><option value="8">Speed: fast (8)</option></select></div>
  <button id="bScan" disabled>Scan inventory</button><button id="bStop" class="sec" style="display:none">Stop</button><button id="bRetry" class="sec" disabled>Re-scan failed</button><span id="pMsg" class="hint"></span></div>
@@ -82,7 +84,7 @@ details summary{cursor:pointer;color:var(--mut);font-size:12px}
   <input id="q" placeholder="Search VIN / model" style="max-width:220px">
   <select id="fHero" style="max-width:240px"><option value="">Hero now: any</option></select>
   <select id="fStatusTop" style="max-width:190px"></select>
-  <button id="bApply" class="sec" disabled>Fix selected</button></div>
+  <button id="bSelAll" class="sec" type="button">Select all</button><button id="bSelNone" class="sec" type="button">Unselect all</button><button id="bApply" class="sec" disabled>Fix selected</button></div>
  <div id="out"></div></div>
 
 <div class="card"><h2>Undo</h2><div class="bar"><button class="sec" id="bBk">Load backups</button><button class="sec" id="bUndo" disabled>Restore selected</button></div><div id="bk"></div></div>
@@ -194,7 +196,7 @@ function render(){
   $('fStatusTop').value=statusF;
   const list=filtered();
   if(view==='vin'){
-    let h=`<table><tr><th><input type="checkbox" id="all" class="inl"></th><th>VIN</th>
+    let h=`<table><tr><th><input type="checkbox" id="all" class="inl" ${list.some(r=>r.status==='ok')&&list.filter(r=>r.status==='ok').every(r=>sel.has(r.vin))?'checked':''}></th><th>VIN</th>
      <th>Status<br><select id="fSt">${SOPT.map(o=>`<option value="${o[0]}" ${o[0]===statusF?'selected':''}>${o[1]}</option>`).join('')}</select></th>
      <th>Hero now → new</th><th>Images</th><th>Notes</th></tr>`;
     list.forEach(r=>{
@@ -224,6 +226,11 @@ function openDetail(v){
   $('modal').style.display='flex';
 }
 $('modal').onclick=e=>{if(e.target.id==='modal')$('modal').style.display='none'};
+function visOk(){return filtered().filter(r=>r.status==='ok').map(r=>r.vin)}
+$('bSelAll').onclick=()=>{visOk().forEach(v=>sel.add(v));render()};
+$('bSelNone').onclick=()=>{sel.clear();render()};
+function onlyList(){return ($('only').value.toUpperCase().match(/[A-HJ-NPR-Z0-9]{17}/g)||[])}
+$('only').oninput=()=>{const n=new Set(onlyList()).size;$('onlyN').textContent=n?(n+' VIN(s) listed - only these will be scanned (Source filter is ignored).'):'';$('bScan').textContent=n?('Scan these '+n+' VINs'):'Scan inventory'};
 function upd(){const n=[...sel].filter(v=>rows[v]&&rows[v].status==='ok').length;$('bApply').disabled=!n;$('bApply').textContent='Fix selected ('+n+')'}
 $('vVin').onclick=()=>{view='vin';$('vVin').classList.add('on');$('vHero').classList.remove('on');render()};
 $('vHero').onclick=()=>{view='hero';$('vHero').classList.add('on');$('vVin').classList.remove('on');render()};
